@@ -1,0 +1,27 @@
+{
+  "name": "bing_points",
+  "version": "1.0.0",
+  "description": "Bing search automation",
+  "main": "desktop.config.js",
+  "dependencies": {
+    "protractor": "^5.0.0"
+  },
+  "devDependencies": {},
+  "scripts": {
+    "test": "protractor desktop.config.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/exbarboss/bing_pointer.git"
+  },
+  "keywords": [
+    "bing",
+    "protractor"
+  ],
+  "author": "Viktar Hushchynski",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/exbarboss/bing_pointer/issues"
+  },
+  "homepage": "https://github.com/exbarboss/bing_pointer#readme"
+}
