@@ -1,5 +1,5 @@
 describe('bing mobile search', function () {
-    const NUMBER_OF_SEARCHES = 100;
+    const NUMBER_OF_SEARCHES = 30;
     const WORD_COMPLEXITY = 5;
 
     const arr = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'];
