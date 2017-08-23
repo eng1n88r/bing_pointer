@@ -73,7 +73,13 @@ const pathToChromeProfile = 'C:/Users/user/AppData/Local/Google/Chrome/User Data
 $ protractor PATH_TO_PROJECT:/bing_pointer/mobile.config.js
 ```
 
+_Add path for `webdriver` to `Path` environment variable i.e. `DRIVE:\bing_pointer\node_modules\.bin\`._
+
+_To automate this process setup a new task in Windows Task Scheduler that will run daily:_
+* On actions tab add new Action
+* Program/Script: `Powershell.exe`
+* Add arguments: `-ExecutionPolicy Bypass DRIVE:\bing_pointer\runner.ps1`
+
 #### Note
 
 _You will need to terminate `Ctrl + C` the first execution and log in with your Microsoft account to get points properly, otherwise it will not work._
-

@@ -6,7 +6,6 @@ const pathToChromeProfile = '/home/user/.config/chromium/Default/BING';
 ////WINDOWS
 // const pathToChromeProfile = 'C:/Users/user/AppData/Local/Google/Chrome/User Data/BING';
 
-
 exports.config = {
   seleniumAddress: 'http://localhost:4444/wd/hub',
   specs: ['mobile.search.js'],
