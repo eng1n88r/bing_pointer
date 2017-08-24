@@ -13,17 +13,17 @@ const search = function (button_element_id) {
 
             word += arr[idx];
         }
-        test(i, word);
+        test(i, word, button_element_id);
     }
 };
 
-const test = function(index, word) {
+const test = function(index, word, button_element_id) {
     it('should search something', function (done) {
         browser.ignoreSynchronization = true;
         browser.get('https://bing.com');
 
         element(by.id('sb_form_q')).clear();
-        element(by.id('sb_form_q')).sendKeys(text + ' ' + Math.random() * 10000);
+        element(by.id('sb_form_q')).sendKeys(word + ' ' + Math.random() * 10000);
         element(by.id(button_element_id)).click();
         expect(index).toBe(index);
         setTimeout(done, 10);
