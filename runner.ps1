@@ -1,5 +1,5 @@
 webdriver-manager update
-Start-Job -ScriptBlock {webdriver-manager start}
-protractor e:\personal\hub\bing_points\desktop.config.js
-protractor e:\personal\hub\bing_points\mobile.config.js
+Start-Job -ScriptBlock {webdriver-manager start --edge "MicrosoftWebDriver.exe"}
+protractor e:\work\hub\bing_pointer\desktop.config.js
+protractor e:\work\hub\bing_pointer\mobile.config.js
 webdriver-manager shutdown
