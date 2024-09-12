@@ -1,3 +1,3 @@
 const helper = require('./helpers/utils');
 
-describe('bing mobile search', () => helper.search('sbBtn'));
+describe('bing mobile search', () => helper.search('sb_form_go'));
