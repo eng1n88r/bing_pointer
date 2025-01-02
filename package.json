@@ -4,9 +4,8 @@
   "description": "Bing search automation",
   "main": "desktop.config.js",
   "dependencies": {
-    "protractor": "^5.0.0"
+    "protractor": "^7.0.0"
   },
-  "devDependencies": {},
   "scripts": {
     "test": "protractor desktop.config.js"
   },
