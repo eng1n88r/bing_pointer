@@ -42,6 +42,12 @@ node bin/bing-pointer.js --count 20 --delay 3000
 
 # Headless (no visible browser window)
 node bin/bing-pointer.js --headless
+
+# Check current Rewards points balance
+node bin/bing-pointer.js --points
+
+# Start the web dashboard
+node bin/bing-pointer.js --dashboard
 ```
 
 ## Options
@@ -49,17 +55,39 @@ node bin/bing-pointer.js --headless
 | Flag | Default | Description |
 |---|---|---|
 | `--setup` | | Open browser for Microsoft account login |
-| `--mode` | `both` | `desktop`, `mobile`, or `both` |
+| `--mode` | `desktop` | `desktop`, `mobile`, or `both` |
 | `--count` | `35` | Number of searches per mode |
-| `--delay` | `2000` | Milliseconds between searches |
+| `--delay` | `20000` | Milliseconds between searches |
 | `--headless` | | Run without visible browser window |
+| `--dashboard` | | Start web dashboard on port 3000 |
+| `--points` | | Show current Rewards points balance |
 | `-h, --help` | | Show help message |
+
+## Dashboard
+
+Start the dashboard with `--dashboard` to get a web UI at `http://127.0.0.1:3000` with:
+
+- Session status (signed in / expired)
+- Run searches with mode and count controls
+- Real-time progress via Server-Sent Events
+- Current Rewards points balance
+- 30-day points history chart
+
+The dashboard API is also agent-friendly:
+
+```sh
+curl http://localhost:3000/api/status
+curl -X POST http://localhost:3000/api/searches -H 'Content-Type: application/json' -d '{"mode":"both","count":35}'
+curl http://localhost:3000/api/points
+```
 
 ## How It Works
 
 The tool opens your browser (tries Edge first, then Chrome, then Brave) with a persistent profile at `~/.bing-pointer/profile`, navigates to bing.com, and submits searches with random English word combinations. Desktop mode uses a standard browser. Mobile mode emulates an iPhone 13 (user-agent, viewport, touch).
 
 Session cookies persist in the profile directory, so you only need to log in once via `--setup`. Before running searches, the tool verifies you are still signed in. If your session has expired, it aborts immediately with a message to re-run `--setup`.
+
+After each run, the tool scrapes your Rewards points balance and saves the result to `~/.bing-pointer/history.json`.
 
 ## Note
 

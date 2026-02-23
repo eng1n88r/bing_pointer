@@ -43,7 +43,7 @@ describe('constants', () => {
     assert.equal(SEARCHES_PER_MODE, 35);
   });
 
-  it('DELAY_MS is 2000', () => {
-    assert.equal(DELAY_MS, 2000);
+  it('DELAY_MS is 20000', () => {
+    assert.equal(DELAY_MS, 20000);
   });
 });

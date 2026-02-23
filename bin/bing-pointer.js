@@ -7,9 +7,12 @@ const os = require('node:os');
 const fs = require('node:fs');
 
 // --- Config ---
-const PROFILE_DIR = path.join(os.homedir(), '.bing-pointer', 'profile');
+const BING_POINTER_DIR = path.join(os.homedir(), '.bing-pointer');
+const PROFILE_DIR = path.join(BING_POINTER_DIR, 'profile');
+const HISTORY_FILE = path.join(BING_POINTER_DIR, 'history.json');
 const SEARCHES_PER_MODE = 35;
-const DELAY_MS = 2000;
+const DELAY_MS = 20000; // 20s between searches to avoid cooldown detection
+const DASHBOARD_PORT = parseInt(process.env.PORT || '7823', 10);
 
 // Edge user-agents so Bing awards maximum Rewards points regardless of actual browser
 const EDGE_UA_DESKTOP = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 Edg/131.0.0.0';
@@ -70,13 +73,16 @@ async function launchBrowser(profileDir, mobile, headless) {
 
 async function checkLogin(page) {
   await page.goto('https://www.bing.com');
-  const signedIn = await page.locator('#id_n').isVisible({ timeout: 5000 }).catch(() => false);
+  // Check for Microsoft auth cookies — works in both desktop and mobile modes
+  const cookies = await page.context().cookies('https://www.bing.com');
+  const signedIn = cookies.some(c => c.name === '_U' && c.value.length > 0);
   if (!signedIn) {
     throw new Error('Not signed in to Microsoft. Run: bing-pointer --setup');
   }
 }
 
-async function search(context, count, delay, label) {
+async function search(context, count, delay, label, onProgress) {
+  const report = onProgress || ((msg) => console.log(`[${msg.index}/${msg.total}] ${msg.mode}: ${msg.error ? 'FAILED - ' + msg.error : '"' + msg.query + '"'}`));
   const page = context.pages()[0] || await context.newPage();
   await checkLogin(page);
 
@@ -84,15 +90,51 @@ async function search(context, count, delay, label) {
     const query = randomQuery();
     try {
       await page.goto('https://www.bing.com');
-      await page.locator('#sb_form_q').fill(query);
-      await page.locator('#sb_form_q').press('Enter');
+      const input = page.locator('#sb_form_q');
+      // Clear existing text using keyboard (like a real user)
+      await input.click();
+      await page.keyboard.press('Control+A');
+      await page.keyboard.press('Backspace');
+      // Type query character-by-character to fire real keyboard events
+      await input.pressSequentially(query, { delay: 50 + Math.random() * 80 });
+      await page.keyboard.press('Enter');
       await page.waitForLoadState('load');
-      console.log(`[${i + 1}/${count}] ${label}: "${query}"`);
+      // Dwell on results page (2-5s) to look human
+      await page.waitForTimeout(2000 + Math.random() * 3000);
+      report({ index: i + 1, total: count, mode: label, query });
     } catch (e) {
-      console.log(`[${i + 1}/${count}] ${label}: FAILED - ${e.message}`);
+      report({ index: i + 1, total: count, mode: label, query, error: e.message });
     }
     if (i < count - 1) await page.waitForTimeout(delay);
   }
+}
+
+async function getRewardsPoints(page) {
+  try {
+    await page.goto('https://www.bing.com');
+    // Try multiple selectors — Bing's layout varies
+    for (const selector of ['#id_rc', '.points-container', '#rewardsBadge']) {
+      const text = await page.locator(selector).first().textContent({ timeout: 5000 }).catch(() => '');
+      const points = parseInt(text.replace(/[^0-9]/g, ''), 10);
+      if (!isNaN(points) && points > 0) return points;
+    }
+  } catch { /* fall through */ }
+  return null;
+}
+
+function readHistory() {
+  try {
+    return JSON.parse(fs.readFileSync(HISTORY_FILE, 'utf8'));
+  } catch {
+    return [];
+  }
+}
+
+function appendHistory(entry) {
+  const history = readHistory();
+  history.push(entry);
+  fs.mkdirSync(path.dirname(HISTORY_FILE), { recursive: true });
+  fs.writeFileSync(HISTORY_FILE, JSON.stringify(history, null, 2) + '\n');
 }
 
 async function setup(profileDir) {
@@ -108,18 +150,20 @@ async function setup(profileDir) {
 }
 
 // --- Exports (for testing) ---
-module.exports = { randomQuery, launchBrowser, search, setup, checkLogin, WORDS, SEARCHES_PER_MODE, DELAY_MS, PROFILE_DIR, EDGE_UA_DESKTOP, EDGE_UA_MOBILE };
+module.exports = { randomQuery, launchBrowser, search, setup, checkLogin, getRewardsPoints, readHistory, appendHistory, WORDS, SEARCHES_PER_MODE, DELAY_MS, PROFILE_DIR, HISTORY_FILE, BING_POINTER_DIR, EDGE_UA_DESKTOP, EDGE_UA_MOBILE };
 
 // --- CLI entry point ---
 if (require.main === module) {
   const { values: opts } = parseArgs({
     options: {
-      setup:    { type: 'boolean', default: false },
-      mode:     { type: 'string',  default: 'both' },
-      count:    { type: 'string',  default: String(SEARCHES_PER_MODE) },
-      delay:    { type: 'string',  default: String(DELAY_MS) },
-      headless: { type: 'boolean', default: false },
-      help:     { type: 'boolean', short: 'h', default: false },
+      setup:     { type: 'boolean', default: false },
+      mode:      { type: 'string',  default: 'desktop' },
+      count:     { type: 'string',  default: String(SEARCHES_PER_MODE) },
+      delay:     { type: 'string',  default: String(DELAY_MS) },
+      headless:  { type: 'boolean', default: false },
+      dashboard: { type: 'boolean', default: false },
+      points:    { type: 'boolean', default: false },
+      help:      { type: 'boolean', short: 'h', default: false },
     },
     strict: false,
   });
@@ -131,12 +175,46 @@ Usage: bing-pointer [options]
 
 Options:
   --setup       Open browser for Microsoft account login
-  --mode MODE   desktop, mobile, or both (default: both)
+  --mode MODE   desktop, mobile, or both (default: desktop)
   --count N     Searches per mode (default: ${SEARCHES_PER_MODE})
   --delay MS    Delay between searches in ms (default: ${DELAY_MS})
   --headless    Run without visible browser window
+  --dashboard   Start web dashboard on port ${DASHBOARD_PORT}
+  --points      Show current Rewards points balance and exit
   -h, --help    Show this help message`);
     process.exit(0);
+  }
+
+  // IPC progress mode: when forked by the dashboard, send progress via process.send()
+  const ipcProgress = process.env.PROGRESS_IPC === '1' && typeof process.send === 'function';
+  const onProgress = ipcProgress ? (msg) => process.send(msg) : undefined;
+
+  async function runSearches(profileDir, mode, count, delay, headless, progressCb) {
+    const results = { desktop: 0, mobile: 0 };
+
+    if (mode === 'desktop' || mode === 'both') {
+      const context = await launchBrowser(profileDir, false, headless);
+      try {
+        await search(context, count, delay, 'Desktop', progressCb);
+        results.desktop = count;
+        if (progressCb) progressCb({ event: 'mode_complete', mode: 'Desktop', count });
+      } finally {
+        await context.close();
+      }
+    }
+
+    if (mode === 'mobile' || mode === 'both') {
+      const context = await launchBrowser(profileDir, true, headless);
+      try {
+        await search(context, count, delay, 'Mobile', progressCb);
+        results.mobile = count;
+        if (progressCb) progressCb({ event: 'mode_complete', mode: 'Mobile', count });
+      } finally {
+        await context.close();
+      }
+    }
+
+    return results;
   }
 
   async function main() {
@@ -148,24 +226,49 @@ Options:
       return;
     }
 
-    const headless = opts.headless;
-
-    if (opts.mode === 'desktop' || opts.mode === 'both') {
-      const context = await launchBrowser(PROFILE_DIR, false, headless);
+    if (opts.points) {
+      const context = await launchBrowser(PROFILE_DIR, false, true);
       try {
-        await search(context, count, delay, 'Desktop');
+        const page = context.pages()[0] || await context.newPage();
+        await checkLogin(page);
+        const points = await getRewardsPoints(page);
+        console.log(points !== null ? `Rewards points: ${points}` : 'Could not retrieve points.');
       } finally {
         await context.close();
       }
+      return;
     }
 
-    if (opts.mode === 'mobile' || opts.mode === 'both') {
-      const context = await launchBrowser(PROFILE_DIR, true, headless);
+    if (opts.dashboard) {
+      const { startDashboard } = require('./dashboard');
+      startDashboard(DASHBOARD_PORT);
+      return;
+    }
+
+    const results = await runSearches(PROFILE_DIR, opts.mode, count, delay, opts.headless, onProgress);
+
+    // Scrape points and save history
+    if (!ipcProgress) {
+      let points = null;
       try {
-        await search(context, count, delay, 'Mobile');
-      } finally {
-        await context.close();
-      }
+        const context = await launchBrowser(PROFILE_DIR, false, true);
+        try {
+          const page = context.pages()[0] || await context.newPage();
+          points = await getRewardsPoints(page);
+        } finally {
+          await context.close();
+        }
+      } catch { /* points scraping is best-effort */ }
+
+      appendHistory({
+        date: new Date().toISOString().slice(0, 10),
+        desktop: results.desktop,
+        mobile: results.mobile,
+        points,
+        status: 'completed',
+      });
+
+      if (points !== null) console.log(`Rewards points: ${points}`);
     }
 
     console.log('Done!');

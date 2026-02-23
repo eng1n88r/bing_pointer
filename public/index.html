@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bing Pointer Dashboard</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; padding: 2rem; }
+  .container { max-width: 800px; margin: 0 auto; }
+  h1 { font-size: 1.5rem; margin-bottom: 1.5rem; color: #f8fafc; }
+  h1 span { color: #60a5fa; }
+
+  .card { background: #1e293b; border-radius: 12px; padding: 1.5rem; margin-bottom: 1rem; }
+  .card h2 { font-size: 0.875rem; text-transform: uppercase; letter-spacing: 0.05em; color: #94a3b8; margin-bottom: 1rem; }
+
+  .status-row { display: flex; align-items: center; gap: 0.75rem; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+  .dot.green { background: #22c55e; box-shadow: 0 0 6px #22c55e; }
+  .dot.red { background: #ef4444; box-shadow: 0 0 6px #ef4444; }
+  .dot.yellow { background: #eab308; box-shadow: 0 0 6px #eab308; }
+  .status-text { font-size: 0.95rem; }
+
+  .points-display { font-size: 2.5rem; font-weight: 700; color: #60a5fa; }
+  .points-label { font-size: 0.85rem; color: #94a3b8; margin-top: 0.25rem; }
+
+  .controls { display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: center; }
+  select, button { font-size: 0.9rem; padding: 0.5rem 1rem; border-radius: 8px; border: 1px solid #334155; background: #0f172a; color: #e2e8f0; cursor: pointer; }
+  button { background: #2563eb; border-color: #2563eb; font-weight: 600; }
+  button:hover { background: #1d4ed8; }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn-secondary { background: #334155; border-color: #475569; }
+  .btn-secondary:hover { background: #475569; }
+
+  .progress-bar { width: 100%; height: 8px; background: #334155; border-radius: 4px; overflow: hidden; margin-top: 1rem; display: none; }
+  .progress-fill { height: 100%; background: #2563eb; border-radius: 4px; transition: width 0.3s ease; width: 0%; }
+
+  .log { margin-top: 1rem; max-height: 200px; overflow-y: auto; font-family: 'SF Mono', Monaco, monospace; font-size: 0.8rem; line-height: 1.6; color: #94a3b8; display: none; }
+  .log .error { color: #f87171; }
+
+  .chart-container { height: 200px; margin-top: 0.5rem; }
+  canvas { width: 100% !important; height: 100% !important; }
+
+  .last-run { font-size: 0.85rem; color: #94a3b8; margin-top: 0.5rem; }
+  .footer { text-align: center; margin-top: 2rem; font-size: 0.8rem; color: #475569; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>Bing <span>Pointer</span></h1>
+
+  <!-- Session Status -->
+  <div class="card" id="status-card">
+    <h2>Session</h2>
+    <div class="status-row">
+      <div class="dot yellow" id="status-dot"></div>
+      <span class="status-text" id="status-text">Checking...</span>
+    </div>
+    <div class="last-run" id="last-run"></div>
+  </div>
+
+  <!-- Points -->
+  <div class="card">
+    <h2>Rewards Points</h2>
+    <div class="points-display" id="points-value">--</div>
+    <div class="points-label">Current balance</div>
+    <button class="btn-secondary" onclick="refreshPoints()" style="margin-top: 0.75rem;" id="refresh-btn">Refresh</button>
+  </div>
+
+  <!-- Search Controls -->
+  <div class="card">
+    <h2>Run Searches</h2>
+    <div class="controls">
+      <select id="mode-select">
+        <option value="desktop">Desktop only</option>
+        <option value="both">Desktop + Mobile</option>
+        <option value="mobile">Mobile only</option>
+      </select>
+      <select id="count-select">
+        <option value="35">35 searches</option>
+        <option value="20">20 searches</option>
+        <option value="10">10 searches</option>
+        <option value="5">5 searches</option>
+      </select>
+      <button id="run-btn" onclick="startSearches()">Run Searches</button>
+    </div>
+    <div class="progress-bar" id="progress-bar">
+      <div class="progress-fill" id="progress-fill"></div>
+    </div>
+    <div class="log" id="log"></div>
+  </div>
+
+  <!-- Points History Chart -->
+  <div class="card">
+    <h2>Points History (30 days)</h2>
+    <div class="chart-container">
+      <canvas id="chart"></canvas>
+    </div>
+  </div>
+
+  <div class="footer">Bing Pointer &middot; Localhost only</div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+<script>
+  let evtSource = null;
+  let chart = null;
+  let totalSearches = 0;
+  let completedSearches = 0;
+
+  // --- Init ---
+  async function init() {
+    await loadStatus();
+    await loadPoints();
+    connectSSE();
+  }
+
+  // --- Status ---
+  async function loadStatus() {
+    try {
+      const res = await fetch('/api/status');
+      const data = await res.json();
+      const dot = document.getElementById('status-dot');
+      const text = document.getElementById('status-text');
+      const lastRun = document.getElementById('last-run');
+
+      if (data.signedIn) {
+        dot.className = 'dot green';
+        text.textContent = 'Signed in to Microsoft';
+      } else {
+        dot.className = 'dot red';
+        text.textContent = 'Not signed in. Run: bing-pointer --setup';
+      }
+
+      if (data.running) {
+        document.getElementById('run-btn').disabled = true;
+      }
+
+      if (data.lastRun) {
+        lastRun.textContent = `Last run: ${data.lastRun.date} (${data.lastRun.desktop}D + ${data.lastRun.mobile}M) - ${data.lastRun.status}`;
+      }
+    } catch {
+      document.getElementById('status-text').textContent = 'Could not connect to server';
+    }
+  }
+
+  // --- Points ---
+  async function loadPoints() {
+    try {
+      const res = await fetch('/api/points');
+      const data = await res.json();
+      document.getElementById('points-value').textContent = data.current !== null ? data.current.toLocaleString() : '--';
+      renderChart(data.history);
+    } catch { /* ignore */ }
+  }
+
+  async function refreshPoints() {
+    const btn = document.getElementById('refresh-btn');
+    btn.disabled = true;
+    btn.textContent = 'Refreshing...';
+    try {
+      const res = await fetch('/api/points/refresh', { method: 'POST' });
+      const data = await res.json();
+      if (data.points !== null) {
+        document.getElementById('points-value').textContent = data.points.toLocaleString();
+      }
+    } catch { /* ignore */ }
+    btn.disabled = false;
+    btn.textContent = 'Refresh';
+  }
+
+  // --- Searches ---
+  async function startSearches() {
+    const mode = document.getElementById('mode-select').value;
+    const count = parseInt(document.getElementById('count-select').value, 10);
+    const btn = document.getElementById('run-btn');
+
+    btn.disabled = true;
+    completedSearches = 0;
+    totalSearches = mode === 'both' ? count * 2 : count;
+
+    const bar = document.getElementById('progress-bar');
+    const fill = document.getElementById('progress-fill');
+    const log = document.getElementById('log');
+    bar.style.display = 'block';
+    log.style.display = 'block';
+    fill.style.width = '0%';
+    log.innerHTML = '';
+
+    try {
+      const res = await fetch('/api/searches', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode, count }),
+      });
+      const data = await res.json();
+      if (data.error) {
+        appendLog(data.error, true);
+        btn.disabled = false;
+      }
+    } catch (e) {
+      appendLog('Failed to start: ' + e.message, true);
+      btn.disabled = false;
+    }
+  }
+
+  function appendLog(text, isError) {
+    const log = document.getElementById('log');
+    const line = document.createElement('div');
+    if (isError) line.className = 'error';
+    line.textContent = text;
+    log.appendChild(line);
+    log.scrollTop = log.scrollHeight;
+  }
+
+  // --- SSE ---
+  function connectSSE() {
+    evtSource = new EventSource('/api/searches/progress');
+
+    evtSource.addEventListener('search', (e) => {
+      const data = JSON.parse(e.data);
+      completedSearches++;
+      const pct = totalSearches > 0 ? Math.round((completedSearches / totalSearches) * 100) : 0;
+      document.getElementById('progress-fill').style.width = pct + '%';
+      appendLog(`[${data.index}/${data.total}] ${data.mode}: "${data.query}"`);
+    });
+
+    evtSource.addEventListener('mode_complete', (e) => {
+      const data = JSON.parse(e.data);
+      appendLog(`${data.mode} complete (${data.count} searches)`);
+    });
+
+    evtSource.addEventListener('complete', (e) => {
+      const data = JSON.parse(e.data);
+      document.getElementById('progress-fill').style.width = '100%';
+      appendLog(`Done! ${data.status}` + (data.points !== null ? ` | Points: ${data.points}` : ''));
+      document.getElementById('run-btn').disabled = false;
+      if (data.points !== null) {
+        document.getElementById('points-value').textContent = data.points.toLocaleString();
+      }
+      loadPoints(); // refresh chart
+    });
+
+    evtSource.addEventListener('error', (e) => {
+      try {
+        const data = JSON.parse(e.data);
+        appendLog(data.message, true);
+      } catch { /* SSE connection error, ignore */ }
+      document.getElementById('run-btn').disabled = false;
+    });
+  }
+
+  // --- Chart ---
+  function renderChart(history) {
+    const ctx = document.getElementById('chart').getContext('2d');
+    const labels = history.map(h => h.date.slice(5)); // MM-DD
+    const points = history.map(h => h.points);
+
+    if (chart) chart.destroy();
+    chart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [{
+          label: 'Points',
+          data: points,
+          borderColor: '#60a5fa',
+          backgroundColor: 'rgba(96,165,250,0.1)',
+          fill: true,
+          tension: 0.3,
+          pointRadius: 3,
+          pointBackgroundColor: '#60a5fa',
+        }],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { ticks: { color: '#64748b', font: { size: 11 } }, grid: { color: '#1e293b' } },
+          y: { ticks: { color: '#64748b', font: { size: 11 } }, grid: { color: '#1e293b' } },
+        },
+      },
+    });
+  }
+
+  init();
+</script>
+</body>
+</html>
