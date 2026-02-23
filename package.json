@@ -1,26 +1,35 @@
 {
-  "name": "bing_points",
-  "version": "1.0.0",
-  "description": "Bing search automation",
-  "main": "desktop.config.js",
-  "dependencies": {
-    "protractor": "^7.0.0"
+  "name": "bing-pointer",
+  "version": "2.0.0",
+  "description": "Earn Microsoft Rewards points with automated Bing searches",
+  "bin": {
+    "bing-pointer": "./bin/bing-pointer.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   },
   "scripts": {
-    "test": "protractor desktop.config.js"
+    "start": "node bin/bing-pointer.js",
+    "setup": "node bin/bing-pointer.js --setup",
+    "test": "node --test 'test/**/*.test.js'"
+  },
+  "dependencies": {
+    "playwright-core": "^1.50.0"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/exbarboss/bing_pointer.git"
+    "url": "git+https://github.com/eng1n88r/bing_pointer.git"
   },
   "keywords": [
     "bing",
-    "protractor"
+    "microsoft-rewards",
+    "playwright",
+    "automation"
   ],
   "author": "Viktar Hushchynski",
   "license": "ISC",
   "bugs": {
-    "url": "https://github.com/exbarboss/bing_pointer/issues"
+    "url": "https://github.com/eng1n88r/bing_pointer/issues"
   },
-  "homepage": "https://github.com/exbarboss/bing_pointer#readme"
+  "homepage": "https://github.com/eng1n88r/bing_pointer#readme"
 }

@@ -1,85 +1,66 @@
 # Bing Pointer
-Protractor automated bing search for collecting daily searching points.
 
-##Dependencies:
+Automate Bing searches to earn Microsoft Rewards points. Runs desktop and mobile searches using Playwright with your existing Edge, Chrome, or Brave browser.
 
-### JDK
+## Requirements
 
-* Linux:
+- [Node.js](https://nodejs.org/) 18+
+- Microsoft Edge, Google Chrome, or Brave
 
-```sh
-$ sudo apt install openjdk-8-jre-headless
-```
-* Windows:
-
-Install [JDK] (http://www.oracle.com/technetwork/java/javase/downloads/jdk8-downloads-2133151.html)
-
-### Node.js
-
-* Linux:
+## Install
 
 ```sh
-$ sudo apt install python-software-properties
-$ curl -sL https://deb.nodesource.com/setup_7.x | sudo -E bash -
-$ sudo apt install nodejs
+git clone https://github.com/eng1n88r/bing_pointer.git
+cd bing_pointer
+npm install
 ```
 
-* Windows:
+## Setup (first time only)
 
-Install [Node.js] (https://nodejs.org/en/download/)
+Log in to your Microsoft account so future searches are authenticated:
 
-### Chrom(ium) browser (depending on your OS)
-
-## How To Use:
-### Linux:
-In `mobile.config.js` and `desktop.config.js` uncomment the the line corresponding to your OS (you could use any custom path you want):
-```javascript
-const pathToChromeProfile = '/home/user/.config/chromium/Default/BING';
-```
-
-  ```sh
- $ git clone https://github.com/exbarboss/bing_pointer.git
- $ cd bing_pointer/
- $ cd node_modules/.bin/
- $ sudo ./webdriver-manager update
- $ sudo ./webdriver-manager start
- ```
- This will start the server. In another terminal window execute the following to emulate desktop search (assuming you are inside `bing_pointer/node_modules/.bin/`):
- ```sh
- $ sudo ./protractor ../../desktop.config.js
- ```
- or to emulate mobile search run:
 ```sh
-$ sudo ./protractor ../../mobile.config.js
+node bin/bing-pointer.js --setup
 ```
-### Windows
-In `mobile.config.js` and `desktop.config.js` uncomment the the line corresponding to your OS (you could use any custom path you want):
-```javascript
-const pathToChromeProfile = 'C:/Users/user/AppData/Local/Google/Chrome/User Data/BING';
-```
- ```sh
- git clone https://github.com/exbarboss/bing_pointer.git
- cd bing_pointer/
- cd node_modules/.bin/
- webdriver-manager update
- webdriver-manager start
- ```
- This will start the server. In another cmd window execute the following to emulate desktop search (assuming you are inside `bing_pointer/node_modules/.bin/`):
- ```sh
- $ protractor PATH_TO_PROJECT:/bing_pointer/desktop.config.js
- ```
- or to emulate mobile search run:
+
+This opens a browser window to bing.com. Log in, then press Enter in the terminal.
+
+## Usage
+
 ```sh
-$ protractor PATH_TO_PROJECT:/bing_pointer/mobile.config.js
+# Run desktop + mobile searches (default: 35 each)
+node bin/bing-pointer.js
+
+# Desktop only
+node bin/bing-pointer.js --mode desktop
+
+# Mobile only
+node bin/bing-pointer.js --mode mobile
+
+# Custom search count and delay
+node bin/bing-pointer.js --count 20 --delay 3000
+
+# Headless (no visible browser window)
+node bin/bing-pointer.js --headless
 ```
 
-_Add path for `webdriver` to `Path` environment variable i.e. `DRIVE:\bing_pointer\node_modules\.bin\`._
+## Options
 
-_To automate this process setup a new task in Windows Task Scheduler that will run daily:_
-* On actions tab add new Action
-* Program/Script: `Powershell.exe`
-* Add arguments: `-ExecutionPolicy Bypass DRIVE:\bing_pointer\runner.ps1`
+| Flag | Default | Description |
+|---|---|---|
+| `--setup` | | Open browser for Microsoft account login |
+| `--mode` | `both` | `desktop`, `mobile`, or `both` |
+| `--count` | `35` | Number of searches per mode |
+| `--delay` | `2000` | Milliseconds between searches |
+| `--headless` | | Run without visible browser window |
+| `-h, --help` | | Show help message |
 
-#### Note
+## How It Works
 
-_You will need to terminate `Ctrl + C` the first execution and log in with your Microsoft account to get points properly, otherwise it will not work._
+The tool opens your browser (tries Edge first, then Chrome, then Brave) with a persistent profile at `~/.bing-pointer/profile`, navigates to bing.com, and submits searches with random English word combinations. Desktop mode uses a standard browser. Mobile mode emulates an iPhone 13 (user-agent, viewport, touch).
+
+Session cookies persist in the profile directory, so you only need to log in once via `--setup`. Before running searches, the tool verifies you are still signed in. If your session has expired, it aborts immediately with a message to re-run `--setup`.
+
+## Note
+
+Automated searches may violate Microsoft Rewards Terms of Service. Use at your own risk.
