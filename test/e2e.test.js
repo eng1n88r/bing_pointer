@@ -4,7 +4,7 @@ const path = require('node:path');
 const os = require('node:os');
 const fs = require('node:fs');
 const { execFile } = require('node:child_process');
-const { launchBrowser, search, checkLogin, getRewardsPoints, readHistory, appendHistory, randomQuery, EDGE_UA_DESKTOP, EDGE_UA_MOBILE, WORDS } = require('../bin/bing-pointer');
+const { launchBrowser, search, checkLogin, getRewardsPoints, readHistory, appendHistory, randomQuery, EDGE_UA_DESKTOP, WORDS } = require('../bin/bing-pointer');
 
 const tmpProfileDir = () => fs.mkdtempSync(path.join(os.tmpdir(), 'bing-pointer-test-'));
 
@@ -14,7 +14,7 @@ let browserAvailable = false;
 async function probeBrowser() {
   const dir = tmpProfileDir();
   try {
-    const ctx = await launchBrowser(dir, false, true);
+    const ctx = await launchBrowser(dir, true);
     await ctx.close();
     browserAvailable = true;
   } catch {
@@ -49,7 +49,7 @@ describe('e2e tests', () => {
     it('launches a persistent browser context and creates the profile dir', async (t) => {
       if (!requireBrowser(t)) return;
       profileDir = tmpProfileDir();
-      context = await launchBrowser(profileDir, false, true);
+      context = await launchBrowser(profileDir, true);
       assert.ok(context, 'context should be truthy');
       assert.ok(typeof context.pages === 'function', 'context should have pages()');
       assert.ok(fs.existsSync(profileDir), 'profile dir should exist');
@@ -59,31 +59,11 @@ describe('e2e tests', () => {
       if (!requireBrowser(t)) return;
       if (!context) {
         profileDir = tmpProfileDir();
-        context = await launchBrowser(profileDir, false, true);
+        context = await launchBrowser(profileDir, true);
       }
       const page = context.pages()[0] || await context.newPage();
       const ua = await page.evaluate(() => navigator.userAgent);
       assert.ok(ua.includes('Edg/'), `expected Edge desktop UA, got: ${ua}`);
-    });
-  });
-
-  describe('launchBrowser() mobile', () => {
-    let context;
-    let profileDir;
-
-    after(async () => {
-      if (context) await context.close();
-      if (profileDir) fs.rmSync(profileDir, { recursive: true, force: true });
-    });
-
-    it('applies mobile device emulation with Edge mobile UA', async (t) => {
-      if (!requireBrowser(t)) return;
-      profileDir = tmpProfileDir();
-      context = await launchBrowser(profileDir, true, true);
-      const page = context.pages()[0] || await context.newPage();
-      const ua = await page.evaluate(() => navigator.userAgent);
-      assert.ok(ua.includes('EdgA/'), `expected Edge mobile UA, got: ${ua}`);
-      assert.ok(ua.includes('Mobile'), `expected Mobile in UA, got: ${ua}`);
     });
   });
 
@@ -99,7 +79,7 @@ describe('e2e tests', () => {
     it('throws when not signed in', { timeout: 60_000 }, async (t) => {
       if (!requireBrowser(t)) return;
       profileDir = tmpProfileDir();
-      context = await launchBrowser(profileDir, false, true);
+      context = await launchBrowser(profileDir, true);
       const page = context.pages()[0] || await context.newPage();
       await assert.rejects(() => checkLogin(page), {
         message: /Not signed in to Microsoft/,
@@ -119,8 +99,8 @@ describe('e2e tests', () => {
     it('rejects with login error on unauthenticated profile', { timeout: 60_000 }, async (t) => {
       if (!requireBrowser(t)) return;
       profileDir = tmpProfileDir();
-      context = await launchBrowser(profileDir, false, true);
-      await assert.rejects(() => search(context, 2, 100, 'Test'), {
+      context = await launchBrowser(profileDir, true);
+      await assert.rejects(() => search(context, 2, 100), {
         message: /Not signed in to Microsoft/,
       });
     });
@@ -134,7 +114,6 @@ describe('CLI --help', () => {
       assert.equal(error, null);
       assert.ok(stdout.includes('Bing Pointer'), 'should contain tool name');
       assert.ok(stdout.includes('--setup'), 'should mention --setup');
-      assert.ok(stdout.includes('--mode'), 'should mention --mode');
       assert.ok(stdout.includes('--headless'), 'should mention --headless');
       assert.ok(stdout.includes('--dashboard'), 'should mention --dashboard');
       assert.ok(stdout.includes('--points'), 'should mention --points');
@@ -166,16 +145,13 @@ describe('history file I/O', () => {
   });
 
   it('readHistory returns empty array when file does not exist', () => {
-    // readHistory reads from the global HISTORY_FILE, so we test the function shape
     const result = readHistory();
     assert.ok(Array.isArray(result), 'should return an array');
   });
 
   it('appendHistory writes entries to the history file', () => {
-    const { readHistory: _, appendHistory: __, HISTORY_FILE, ...rest } = require('../bin/bing-pointer');
-    // Direct file I/O test
     const testFile = tmpHistoryFile;
-    const entry = { date: '2026-01-01', desktop: 35, mobile: 35, points: 1000, status: 'completed' };
+    const entry = { date: '2026-01-01', searches: 35, points: 1000, status: 'completed' };
     fs.writeFileSync(testFile, JSON.stringify([]), 'utf8');
     const data = JSON.parse(fs.readFileSync(testFile, 'utf8'));
     data.push(entry);
@@ -189,11 +165,8 @@ describe('history file I/O', () => {
 
 describe('dashboard HTTP routes', () => {
   it('health endpoint returns 200', { timeout: 10_000 }, (t, done) => {
-    const { startDashboard } = require('../bin/dashboard');
     const http = require('node:http');
-    // Start dashboard on a random port
     const server = http.createServer((req, res) => {
-      // Re-implement minimal health check for unit test
       if (req.url === '/health') {
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ status: 'ok' }));

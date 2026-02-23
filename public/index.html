@@ -71,11 +71,6 @@
   <div class="card">
     <h2>Run Searches</h2>
     <div class="controls">
-      <select id="mode-select">
-        <option value="desktop">Desktop only</option>
-        <option value="both">Desktop + Mobile</option>
-        <option value="mobile">Mobile only</option>
-      </select>
       <select id="count-select">
         <option value="35">35 searches</option>
         <option value="20">20 searches</option>
@@ -137,7 +132,7 @@
       }
 
       if (data.lastRun) {
-        lastRun.textContent = `Last run: ${data.lastRun.date} (${data.lastRun.desktop}D + ${data.lastRun.mobile}M) - ${data.lastRun.status}`;
+        lastRun.textContent = `Last run: ${data.lastRun.date} (${data.lastRun.searches} searches) - ${data.lastRun.status}`;
       }
     } catch {
       document.getElementById('status-text').textContent = 'Could not connect to server';
@@ -171,13 +166,12 @@
 
   // --- Searches ---
   async function startSearches() {
-    const mode = document.getElementById('mode-select').value;
     const count = parseInt(document.getElementById('count-select').value, 10);
     const btn = document.getElementById('run-btn');
 
     btn.disabled = true;
     completedSearches = 0;
-    totalSearches = mode === 'both' ? count * 2 : count;
+    totalSearches = count;
 
     const bar = document.getElementById('progress-bar');
     const fill = document.getElementById('progress-fill');
@@ -191,7 +185,7 @@
       const res = await fetch('/api/searches', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mode, count }),
+        body: JSON.stringify({ count }),
       });
       const data = await res.json();
       if (data.error) {
@@ -222,12 +216,7 @@
       completedSearches++;
       const pct = totalSearches > 0 ? Math.round((completedSearches / totalSearches) * 100) : 0;
       document.getElementById('progress-fill').style.width = pct + '%';
-      appendLog(`[${data.index}/${data.total}] ${data.mode}: "${data.query}"`);
-    });
-
-    evtSource.addEventListener('mode_complete', (e) => {
-      const data = JSON.parse(e.data);
-      appendLog(`${data.mode} complete (${data.count} searches)`);
+      appendLog(`[${data.index}/${data.total}] "${data.query}"`);
     });
 
     evtSource.addEventListener('complete', (e) => {

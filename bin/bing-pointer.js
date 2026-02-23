@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-const { chromium, devices } = require('playwright-core');
+const { chromium } = require('playwright-core');
 const { parseArgs } = require('node:util');
 const path = require('node:path');
 const os = require('node:os');
@@ -16,7 +16,7 @@ const DASHBOARD_PORT = parseInt(process.env.PORT || '7823', 10);
 
 // Edge user-agents so Bing awards maximum Rewards points regardless of actual browser
 const EDGE_UA_DESKTOP = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 Edg/131.0.0.0';
-const EDGE_UA_MOBILE = 'Mozilla/5.0 (Linux; Android 15; Pixel 9) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36 EdgA/131.0.0.0';
+
 
 const WORDS = [
   'weather', 'recipe', 'movie', 'travel', 'music', 'garden', 'history',
@@ -35,14 +35,10 @@ function randomQuery() {
   return `${pick()} ${pick()} ${Math.floor(Math.random() * 10000)}`;
 }
 
-async function launchBrowser(profileDir, mobile, headless) {
+async function launchBrowser(profileDir, headless) {
   fs.mkdirSync(profileDir, { recursive: true });
 
-  const contextOpts = { headless, userAgent: mobile ? EDGE_UA_MOBILE : EDGE_UA_DESKTOP };
-  if (mobile) {
-    const { userAgent: _, ...deviceDesc } = devices['iPhone 13'];
-    Object.assign(contextOpts, deviceDesc);
-  }
+  const contextOpts = { headless, userAgent: EDGE_UA_DESKTOP };
 
   // Try Edge first (earns more Rewards points), then Chrome, then Brave
   for (const channel of ['msedge', 'chrome']) {
@@ -81,8 +77,8 @@ async function checkLogin(page) {
   }
 }
 
-async function search(context, count, delay, label, onProgress) {
-  const report = onProgress || ((msg) => console.log(`[${msg.index}/${msg.total}] ${msg.mode}: ${msg.error ? 'FAILED - ' + msg.error : '"' + msg.query + '"'}`));
+async function search(context, count, delay, onProgress) {
+  const report = onProgress || ((msg) => console.log(`[${msg.index}/${msg.total}] ${msg.error ? 'FAILED - ' + msg.error : '"' + msg.query + '"'}`));
   const page = context.pages()[0] || await context.newPage();
   await checkLogin(page);
 
@@ -101,9 +97,9 @@ async function search(context, count, delay, label, onProgress) {
       await page.waitForLoadState('load');
       // Dwell on results page (2-5s) to look human
       await page.waitForTimeout(2000 + Math.random() * 3000);
-      report({ index: i + 1, total: count, mode: label, query });
+      report({ index: i + 1, total: count, query });
     } catch (e) {
-      report({ index: i + 1, total: count, mode: label, query, error: e.message });
+      report({ index: i + 1, total: count, query, error: e.message });
     }
     if (i < count - 1) await page.waitForTimeout(delay);
   }
@@ -139,7 +135,7 @@ function appendHistory(entry) {
 
 async function setup(profileDir) {
   console.log('Opening browser for Microsoft account login...');
-  const context = await launchBrowser(profileDir, false, false);
+  const context = await launchBrowser(profileDir, false);
   const page = context.pages()[0] || await context.newPage();
   await page.goto('https://www.bing.com');
   console.log('\nLog in to your Microsoft account in the browser window.');
@@ -150,14 +146,13 @@ async function setup(profileDir) {
 }
 
 // --- Exports (for testing) ---
-module.exports = { randomQuery, launchBrowser, search, setup, checkLogin, getRewardsPoints, readHistory, appendHistory, WORDS, SEARCHES_PER_MODE, DELAY_MS, PROFILE_DIR, HISTORY_FILE, BING_POINTER_DIR, EDGE_UA_DESKTOP, EDGE_UA_MOBILE };
+module.exports = { randomQuery, launchBrowser, search, setup, checkLogin, getRewardsPoints, readHistory, appendHistory, WORDS, SEARCHES_PER_MODE, DELAY_MS, PROFILE_DIR, HISTORY_FILE, BING_POINTER_DIR, EDGE_UA_DESKTOP };
 
 // --- CLI entry point ---
 if (require.main === module) {
   const { values: opts } = parseArgs({
     options: {
       setup:     { type: 'boolean', default: false },
-      mode:      { type: 'string',  default: 'desktop' },
       count:     { type: 'string',  default: String(SEARCHES_PER_MODE) },
       delay:     { type: 'string',  default: String(DELAY_MS) },
       headless:  { type: 'boolean', default: false },
@@ -175,8 +170,7 @@ Usage: bing-pointer [options]
 
 Options:
   --setup       Open browser for Microsoft account login
-  --mode MODE   desktop, mobile, or both (default: desktop)
-  --count N     Searches per mode (default: ${SEARCHES_PER_MODE})
+  --count N     Searches per run (default: ${SEARCHES_PER_MODE})
   --delay MS    Delay between searches in ms (default: ${DELAY_MS})
   --headless    Run without visible browser window
   --dashboard   Start web dashboard on port ${DASHBOARD_PORT}
@@ -189,32 +183,15 @@ Options:
   const ipcProgress = process.env.PROGRESS_IPC === '1' && typeof process.send === 'function';
   const onProgress = ipcProgress ? (msg) => process.send(msg) : undefined;
 
-  async function runSearches(profileDir, mode, count, delay, headless, progressCb) {
-    const results = { desktop: 0, mobile: 0 };
-
-    if (mode === 'desktop' || mode === 'both') {
-      const context = await launchBrowser(profileDir, false, headless);
-      try {
-        await search(context, count, delay, 'Desktop', progressCb);
-        results.desktop = count;
-        if (progressCb) progressCb({ event: 'mode_complete', mode: 'Desktop', count });
-      } finally {
-        await context.close();
-      }
+  async function runSearches(profileDir, count, delay, headless, progressCb) {
+    const context = await launchBrowser(profileDir, headless);
+    try {
+      await search(context, count, delay, progressCb);
+      if (progressCb) progressCb({ event: 'complete', count });
+    } finally {
+      await context.close();
     }
-
-    if (mode === 'mobile' || mode === 'both') {
-      const context = await launchBrowser(profileDir, true, headless);
-      try {
-        await search(context, count, delay, 'Mobile', progressCb);
-        results.mobile = count;
-        if (progressCb) progressCb({ event: 'mode_complete', mode: 'Mobile', count });
-      } finally {
-        await context.close();
-      }
-    }
-
-    return results;
+    return count;
   }
 
   async function main() {
@@ -227,7 +204,7 @@ Options:
     }
 
     if (opts.points) {
-      const context = await launchBrowser(PROFILE_DIR, false, true);
+      const context = await launchBrowser(PROFILE_DIR, true);
       try {
         const page = context.pages()[0] || await context.newPage();
         await checkLogin(page);
@@ -245,13 +222,13 @@ Options:
       return;
     }
 
-    const results = await runSearches(PROFILE_DIR, opts.mode, count, delay, opts.headless, onProgress);
+    const searchCount = await runSearches(PROFILE_DIR, count, delay, opts.headless, onProgress);
 
     // Scrape points and save history
     if (!ipcProgress) {
       let points = null;
       try {
-        const context = await launchBrowser(PROFILE_DIR, false, true);
+        const context = await launchBrowser(PROFILE_DIR, true);
         try {
           const page = context.pages()[0] || await context.newPage();
           points = await getRewardsPoints(page);
@@ -262,8 +239,7 @@ Options:
 
       appendHistory({
         date: new Date().toISOString().slice(0, 10),
-        desktop: results.desktop,
-        mobile: results.mobile,
+        searches: searchCount,
         points,
         status: 'completed',
       });

@@ -4,7 +4,7 @@ const path = require('node:path');
 const fs = require('node:fs');
 const { readHistory, appendHistory, launchBrowser, checkLogin, getRewardsPoints, PROFILE_DIR, HISTORY_FILE, SEARCHES_PER_MODE, DELAY_MS } = require('./bing-pointer');
 
-let currentRun = null; // { worker, sseClients: Set }
+let currentRun = null;
 const sseClients = new Set();
 
 function json(res, status, data) {
@@ -62,7 +62,7 @@ async function handleRequest(req, res) {
   if (method === 'GET' && url.pathname === '/api/status') {
     let signedIn = false;
     try {
-      const context = await launchBrowser(PROFILE_DIR, false, true);
+      const context = await launchBrowser(PROFILE_DIR, true);
       try {
         const page = context.pages()[0] || await context.newPage();
         await checkLogin(page);
@@ -93,12 +93,11 @@ async function handleRequest(req, res) {
     let body = {};
     try { body = await parseBody(req); } catch { /* use defaults */ }
 
-    const mode = body.mode || 'both';
     const count = String(body.count || SEARCHES_PER_MODE);
     const delay = String(body.delay || DELAY_MS);
 
     const worker = fork(path.join(__dirname, 'bing-pointer.js'), [
-      '--headless', '--mode', mode, '--count', count, '--delay', delay,
+      '--headless', '--count', count, '--delay', delay,
     ], {
       env: { ...process.env, PROGRESS_IPC: '1' },
     });
@@ -106,8 +105,8 @@ async function handleRequest(req, res) {
     currentRun = { worker };
 
     worker.on('message', (msg) => {
-      if (msg.event === 'mode_complete') {
-        broadcast('mode_complete', msg);
+      if (msg.event === 'complete') {
+        broadcast('run_complete', msg);
       } else if (msg.error) {
         broadcast('error', { message: msg.error });
       } else {
@@ -119,7 +118,7 @@ async function handleRequest(req, res) {
       // Scrape points after run completes
       let points = null;
       try {
-        const context = await launchBrowser(PROFILE_DIR, false, true);
+        const context = await launchBrowser(PROFILE_DIR, true);
         try {
           const page = context.pages()[0] || await context.newPage();
           points = await getRewardsPoints(page);
@@ -131,8 +130,7 @@ async function handleRequest(req, res) {
       const countNum = parseInt(count, 10);
       const entry = {
         date: new Date().toISOString().slice(0, 10),
-        desktop: (mode === 'desktop' || mode === 'both') ? countNum : 0,
-        mobile: (mode === 'mobile' || mode === 'both') ? countNum : 0,
+        searches: countNum,
         points,
         status: code === 0 ? 'completed' : 'failed',
       };
@@ -147,7 +145,7 @@ async function handleRequest(req, res) {
       currentRun = null;
     });
 
-    json(res, 202, { status: 'started', mode, count: parseInt(count, 10) });
+    json(res, 202, { status: 'started', count: parseInt(count, 10) });
     return;
   }
 
@@ -177,7 +175,7 @@ async function handleRequest(req, res) {
   if (method === 'POST' && url.pathname === '/api/points/refresh') {
     let points = null;
     try {
-      const context = await launchBrowser(PROFILE_DIR, false, true);
+      const context = await launchBrowser(PROFILE_DIR, true);
       try {
         const page = context.pages()[0] || await context.newPage();
         await checkLogin(page);
